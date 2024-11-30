@@ -1,11 +1,11 @@
 import os
 import yaml
 import zlib
-
+import subprocess
 
 def read_config(file_path='config.yaml'):
     """
-    Считывает конфигурацию из CSV-файла.
+    Считывает конфигурацию из YAML-файла.
     """
     config = {}
     with open(file_path, 'r') as f:
@@ -15,7 +15,7 @@ def read_config(file_path='config.yaml'):
         config['graph_path'] = data['graph_path']
     return config
 
-def parse_object(object_hash, description=None):
+def parse_object(object_hash, config, description=None):
     """
     Извлечь информацию из git-объекта по его хэшу
     """
@@ -54,7 +54,7 @@ def parse_tree(raw_content):
         mode, rest = rest.split(b' ', maxsplit=1)
         name, rest = rest.split(b'\x00', maxsplit=1)
         sha1, rest = rest[:20].hex(), rest[20:]
-        children.append(parse_object(sha1, description=name.decode()))
+        children.append(parse_object(sha1,config, description=name.decode()))
 
     return children
 
@@ -82,42 +82,40 @@ def parse_commit(raw_content):
 
     commit_data['message'] = '\n'.join(content_lines[1:]).strip()
 
-    return [parse_object(commit_data['tree'])] + \
-           [parse_object(parent) for parent in commit_data['parents']]
+    return [parse_object(commit_data['tree'], config)] + \
+           [parse_object(parent, config) for parent in commit_data['parents']]
 
 
-def get_last_commit():
+def get_last_commit(config):
     """Получить хэш для последнего коммита в ветке"""
-    head_path = os.path.join(config['repo_path'], '.git', 'refs', 'heads', config['branch'])
+    head_path = os.path.join(config['repo_path'], '.git', 'refs', 'heads', 'main')
     with open(head_path, 'r') as file:
         return file.read().strip()
 
 
-def generate_plantuml(filename):
+def generate_plantuml(filename,config):
     """Создать DOT-файл для графа зависимостей"""
 
-    def recursive_write(file, tree):
-        """Рекурсивно перебрать все узлы дерева для построения связей графа"""
+    def recursive_write(file, tree,visited):
+
         label = tree['label']
         for child in tree['children']:
-            # TODO: учитывать только уникальные связи, чтобы они не повторялись
-            file.write(f'    "{label}" -> "{child["label"]}"\n')
-            recursive_write(file, child)
+            child_label = child['label']
+            if (label, child_label) not in visited:
+                file.write(f'"{label}" --> "{child_label}"\n')
+                visited.add((label, child_label))
+            recursive_write(file, child, visited)
 
-    # Стартовая точка репозитория - последний коммит главной ветки
-    last_commit = get_last_commit()
-    # Строим дерево
-    tree = parse_object(last_commit)
-    # Описываем граф в DOT-нотации 
+
+    last_commit = get_last_commit(config)
+
+    tree = parse_object(last_commit,config)
+
     with open(filename, 'w') as file:
-        file.write('@startuml\ndigraph G {\n')
-        recursive_write(file, tree)
-        file.write('}\n@enduml')
+        file.write('@startuml\n')
+        recursive_write(file, tree,set())
+        file.write('@enduml')
 
-
-# Достаем информацию из конфигурационного файла
-with open('config.json', 'r') as f:
-    config = json.load(f)
-
-# Генерируем файл с DOT-нотацией графа зависимостей
-generate_dot(config['graph_path'])
+if __name__ == '__main__':
+    config = read_config()
+    generate_plantuml('graph.puml', config)
