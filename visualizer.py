@@ -17,7 +17,7 @@ def read_config(file_path='config.yaml'):
 
 def parse_object(object_hash, config, description=None):
     """
-    Извлечь информацию из git-объекта по его хэшу
+    Извлечь информацию из git-объекта по его хэшу.
     """
     object_path = os.path.join(config['repo_path'], '.git', 'objects', object_hash[:2], object_hash[2:])
 
@@ -25,17 +25,23 @@ def parse_object(object_hash, config, description=None):
         raw_object_content = zlib.decompress(file.read())
         header, raw_object_body = raw_object_content.split(b'\x00', maxsplit=1)
         object_type, content_size = header.decode().split(' ')
+
         object_dict = {}
+
         if object_type == 'commit':
-            object_dict['label'] = r'[commit]\n' + object_hash[:6]
-            object_dict['children'] = parse_commit(raw_object_body)
+            commit_data = parse_commit(raw_object_body, config)
+            object_dict['label'] = r'Type: commit\n Hash: ' + object_hash[:6]
+            if commit_data['message']:
+                message = commit_data['message'].replace(' ', '_')
+                object_dict['label'] += r'\n Msg: ' + message
+            object_dict['children'] = commit_data['children']
 
         elif object_type == 'tree':
-            object_dict['label'] = r'[tree]\n' + object_hash[:6]
-            object_dict['children'] = parse_tree(raw_object_body)
+            object_dict['label'] = r'Type: tree\n Hash: ' + object_hash[:6]
+            object_dict['children'] = parse_tree(raw_object_body, config)
 
         elif object_type == 'blob':
-            object_dict['label'] = r'[blob]\n' + object_hash[:6]
+            object_dict['label'] = r'Type: blob\n Hash: ' + object_hash[:6]
             object_dict['children'] = []
 
         if description is not None:
@@ -44,9 +50,9 @@ def parse_object(object_hash, config, description=None):
         return object_dict
 
 
-def parse_tree(raw_content):
+def parse_tree(raw_content, config):
     """
-    Парсим git-объект дерева
+    Парсим git-объект дерева.
     """
     children = []
     rest = raw_content
@@ -54,23 +60,24 @@ def parse_tree(raw_content):
         mode, rest = rest.split(b' ', maxsplit=1)
         name, rest = rest.split(b'\x00', maxsplit=1)
         sha1, rest = rest[:20].hex(), rest[20:]
-        children.append(parse_object(sha1,config, description=name.decode()))
+        children.append(parse_object(sha1, config, description=name.decode()))
 
     return children
 
 
-def parse_commit(raw_content):
+def parse_commit(raw_content, config):
     """
-    Парсим git-объект коммита
+    Парсим git-объект коммита.
     """
-
     content = raw_content.decode()
     content_lines = content.split('\n')
+
     commit_data = {}
+
     commit_data['tree'] = content_lines[0].split()[1]
     content_lines = content_lines[1:]
-    commit_data['parents'] = []
 
+    commit_data['parents'] = []
     while content_lines[0].startswith('parent'):
         commit_data['parents'].append(content_lines[0].split()[1])
         content_lines = content_lines[1:]
@@ -82,8 +89,10 @@ def parse_commit(raw_content):
 
     commit_data['message'] = '\n'.join(content_lines[1:]).strip()
 
-    return [parse_object(commit_data['tree'], config)] + \
-           [parse_object(parent, config) for parent in commit_data['parents']]
+    commit_data['children'] = [parse_object(commit_data['tree'], config)] + \
+                              [parse_object(parent, config) for parent in commit_data['parents']]
+
+    return commit_data
 
 
 def get_last_commit(config):
