@@ -42,6 +42,8 @@ python visualizer.py
 
 1. Ввод команды в консоль:
 
+   ![image](https://github.com/user-attachments/assets/bb4be6d6-425c-4ffc-b4ac-e8996ffa9377)
+
 ## Результаты прогона тестов
 
 Для проверки корректности работы программы предусмотрены тесты, которые можно выполнить с помощью unittest командой:
@@ -50,3 +52,4 @@ python -m unittest tests.py
 ```
 
 Признаком корректной работы программы является такой вывод после прогона тестов:
+![image](https://github.com/user-attachments/assets/5cf762e5-40d7-4715-b2e7-aed8fe8e9f03)
